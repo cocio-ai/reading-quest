@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>討伐クエスト：魔王アキオを倒せ！</title>
+    <style>
+        :root { --primary-color: #e53935; --bg-color: #1a1a2e; --text-color: #f5f5f5; --box-bg: #16213e; --demon-color: #6a0dad; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; text-align: center; }
+        #app-container { max-width: 500px; margin: 0 auto; background-color: var(--box-bg); border-radius: 15px; padding: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.8); border: 2px solid #3f000f; position: relative; }
+        .status-header { background: linear-gradient(135deg, #870000, #190a05); padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ff4d4d; }
+        h1 { margin-top: 0; font-size: 1.4em; color: #ffcccc; }
+        h2 { font-size: 1.2em; border-bottom: 2px solid var(--primary-color); padding-bottom: 5px; display: inline-block;}
+        .level-display { font-size: 1.5em; font-weight: bold; margin-bottom: 10px; color: #ffb347; }
+        progress { width: 100%; height: 20px; border-radius: 10px; transition: 0.5s; }
+        progress::-webkit-progress-bar { background-color: #333; border-radius: 10px; }
+        progress::-webkit-progress-value { background-color: #ff3333; border-radius: 10px; box-shadow: 0 0 10px #ff3333; }
+        
+        button { background-color: var(--primary-color); color: white; border: none; padding: 12px 20px; font-size: 1.1em; border-radius: 8px; cursor: pointer; width: 100%; margin: 10px 0; font-weight: bold; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        .btn-cancel { background-color: #555; }
+        .btn-demon { background-color: var(--demon-color); width: auto; padding: 5px 10px; font-size: 0.9em; margin-top: 5px;}
+        
+        input, select, textarea { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #444; background-color: #2a2a40; color: white; box-sizing: border-box; font-size: 1em; }
+        textarea { height: 100px; resize: none; }
+        
+        ul { list-style: none; padding: 0; text-align: left; }
+        li { background-color: rgba(255,255,255,0.05); margin-bottom: 10px; padding: 12px; border-radius: 8px; border-left: 5px solid #ffb347; }
+        .hero-name { font-weight: bold; color: #ffb347; margin-bottom: 5px; display: inline-block;}
+        .date { font-size: 0.8em; color: #aaa; margin-top: 8px; }
+        .progress-tag { font-size: 0.8em; background:#444; padding:3px 8px; border-radius:12px; margin-left: 5px; }
+        .demon-feedback { background: rgba(106, 13, 173, 0.2); border: 1px dashed var(--demon-color); padding: 10px; margin-top: 10px; border-radius: 5px; color: #e0b0ff; font-size: 0.95em; }
+        
+        #demon-login { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #444; width: auto; padding: 5px; font-size: 1.2em; box-shadow: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <button id="demon-login">👁️</button>
+
+    <div class="status-header">
+        <h1>⚔️ 読書討伐クエスト<br>〜魔王アキオを倒せ！〜</h1>
+        <div class="level-display">現在の勇者ランク: <span id="display-level">1</span></div>
+        <div style="font-size: 0.9em; margin-bottom: 5px;">次のレベルまで: <span id="display-exp">0</span> / 100 EXP</div>
+        <progress id="exp-bar" value="0" max="100"></progress>
+    </div>
+
+    <div id="view-status">
+        <button id="btn-attack">攻撃を仕掛ける（読書を報告）</button>
+        <h2>⚔️ 魔王へのダメージ履歴</h2>
+        <ul id="history-list"><li>🔮 魔法陣（データベース）に接続中...</li></ul>
+    </div>
+
+    <div id="view-form" style="display: none;">
+        <h2>📝 討伐報告書</h2>
+        <select id="input-hero">
+            <option value="勇者ニコ（中3）">勇者ニコ（中3）</option>
+            <option value="勇者モミジ（中1）">勇者モミジ（中1）</option>
+        </select>
+        <input type="text" id="input-title" placeholder="読んでる書物（タイトル）" required>
+        <input type="text" id="input-progress" placeholder="進捗（例：第3章まで など）" required>
+        <textarea id="input-review" placeholder="今回の冒険で得た知識や感想を報告せよ！" required></textarea>
+        
+        <button id="btn-submit">渾身の一撃を放つ！（送信）</button>
+        <button id="btn-cancel" class="btn-cancel">一時撤退（戻る）</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+    /* ▼▼▼ ここにコピーしたFirebaseの設定を貼り付けます ▼▼▼ */
+    const firebaseConfig = {
+      apiKey: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      authDomain: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      projectId: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      storageBucket: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      messagingSenderId: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      appId: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    };
+    /* ▲▲▲ ここまで ▲▲▲ */
+
+    // Firebaseの初期化
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const questsRef = collection(db, "quests");
+    
+    // データ取得のクエリ（新しい順に並び替え）
+    const q = query(questsRef, orderBy("createdAt", "desc"));
+
+    const MAX_LEVEL = 30;
+    let isDemonMode = false;
+    let totalExp = 0;
+
+    // 画面切り替え処理
+    function switchView(view) {
+        document.getElementById('view-status').style.display = view === 'form' ? 'none' : 'block';
+        document.getElementById('view-form').style.display = view === 'form' ? 'block' : 'none';
+    }
+
+    document.getElementById('btn-attack').addEventListener('click', () => switchView('form'));
+    document.getElementById('btn-cancel').addEventListener('click', () => switchView('status'));
+
+    // ✨魔法のコード：Firestoreのデータが変更されたらリアルタイムに画面を更新
+    onSnapshot(q, (snapshot) => {
+        const historyList = document.getElementById('history-list');
+        historyList.innerHTML = ''; 
+        totalExp = 0;
+
+        snapshot.forEach((docSnap) => {
+            const quest = docSnap.data();
+            const docId = docSnap.id;
+            totalExp += quest.gainedExp;
+
+            // 日付の整形処理
+            let dateStr = "送信中...";
+            if (quest.createdAt) {
+                const d = quest.createdAt.toDate();
+                dateStr = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+            }
+
+            let li = document.createElement('li');
+            let htmlContent = `
+                <div class="hero-name">${quest.hero}</div> の攻撃！<br>
+                <strong>${quest.title}</strong> <span class="progress-tag">${quest.progress}</span>
+                <div style="margin: 8px 0; font-size: 0.95em; color: #eee;">「${quest.review}」</div>
+                <div class="date">${dateStr} | ⚡ダメージ: ${quest.gainedExp} EXP</div>
+            `;
+
+            if (quest.feedback) {
+                htmlContent += `
+                    <div class="demon-feedback">
+                        <strong>😈 魔王アキオの声：</strong><br>「${quest.feedback}」
+                    </div>`;
+            } else if (isDemonMode) {
+                htmlContent += `<button class="btn-demon" onclick="window.sendFeedback('${docId}')">🗣️ 勇者に言葉を与える</button>`;
+            }
+
+            li.innerHTML = htmlContent;
+            historyList.appendChild(li);
+        });
+
+        updateStatusUI();
+    });
+
+    // ステータス（レベル）の更新UI
+    function updateStatusUI() {
+        let currentLevel = Math.min(MAX_LEVEL, Math.floor(totalExp / 100) + 1);
+        let expProgress = totalExp % 100;
+
+        document.getElementById('display-level').innerText = currentLevel;
+        document.getElementById('display-exp').innerText = currentLevel >= MAX_LEVEL ? "MAX" : expProgress;
+        document.getElementById('exp-bar').value = currentLevel >= MAX_LEVEL ? 100 : expProgress;
+        document.getElementById('app-container').style.borderColor = isDemonMode ? "#6a0dad" : "#3f000f";
+    }
+
+    // クエストの送信（Firestoreへ書き込み）
+    document.getElementById('btn-submit').addEventListener('click', async () => {
+        const hero = document.getElementById('input-hero').value;
+        const title = document.getElementById('input-title').value;
+        const progress = document.getElementById('input-progress').value;
+        const review = document.getElementById('input-review').value;
+
+        if (!title || !progress || !review) return alert("すべて入力するのだ！");
+
+        const gainedExp = 5 + Math.floor(review.length / 5);
+        const oldLevel = Math.min(MAX_LEVEL, Math.floor(totalExp / 100) + 1);
+
+        try {
+            await addDoc(questsRef, {
+                hero: hero,
+                title: title,
+                progress: progress,
+                review: review,
+                gainedExp: gainedExp,
+                feedback: "",
+                createdAt: serverTimestamp() // Firebaseのサーバー時間を自動記録
+            });
+
+            // ローカルで仮計算してレベルアップ判定
+            const newTotalExp = totalExp + gainedExp;
+            const newLevel = Math.min(MAX_LEVEL, Math.floor(newTotalExp / 100) + 1);
+            
+            if (newLevel > oldLevel) {
+                let msg = `💥 魔王アキオに大ダメージ！ランク ${newLevel} に上がった！`;
+                if (newLevel % 10 === 0) msg += `\n\n💰 【宝箱ドロップ】\n「100円」を落とした！`;
+                alert(msg);
+            } else {
+                alert(`攻撃成功！魔王アキオに ${gainedExp} のダメージを与えた！`);
+            }
+
+            // フォームのリセット
+            document.getElementById('input-title').value = '';
+            document.getElementById('input-progress').value = '';
+            document.getElementById('input-review').value = '';
+            switchView('status');
+
+        } catch (e) {
+            console.error("エラーが発生しました: ", e);
+            alert("魔王の結界に阻まれ、通信に失敗しました。");
+        }
+    });
+
+    // 魔王モードの切り替え
+    document.getElementById('demon-login').addEventListener('click', () => {
+        if (!isDemonMode) {
+            const pass = prompt("【魔王認証】合言葉を入力せよ");
+            if (pass === "0000") {
+                isDemonMode = true;
+                alert("😈 魔王アキオが降臨しました。");
+                updateStatusUI(); // UIを再描画してボタンを表示させるため、便宜的にsnapshotを発火させたいがここでは一旦リロードなしでUI更新の仕組みを利用
+                location.reload(); // 最も確実にUIを魔王モードで再構築するため画面リロード
+            } else {
+                alert("合言葉が違う。立ち去れ！");
+            }
+        } else {
+            isDemonMode = false;
+            alert("魔王アキオは玉座へ帰りました。");
+            location.reload();
+        }
+    });
+
+    // 状態を維持するためのLocalStorage処理（魔王モードの保持）
+    window.onload = () => {
+        isDemonMode = localStorage.getItem('demonMode') === 'true';
+    };
+    document.getElementById('demon-login').addEventListener('click', (e) => {
+         e.stopImmediatePropagation(); // 重複実行防止
+         if (!isDemonMode) {
+            const pass = prompt("【魔王認証】合言葉を入力せよ");
+            if (pass === "0000") {
+                localStorage.setItem('demonMode', 'true');
+                alert("😈 魔王アキオが降臨しました。");
+                location.reload();
+            } else {
+                alert("合言葉が違う。立ち去れ！");
+            }
+        } else {
+            localStorage.setItem('demonMode', 'false');
+            alert("魔王アキオは玉座へ帰りました。");
+            location.reload();
+        }
+    });
+
+    // 魔王フィードバックの送信（特定のドキュメントを更新）
+    window.sendFeedback = async (docId) => {
+        const message = prompt("勇者へのメッセージ（フィードバック）を入力してください:");
+        if (message) {
+            try {
+                const questDoc = doc(db, "quests", docId);
+                await updateDoc(questDoc, {
+                    feedback: message
+                });
+            } catch (e) {
+                console.error("エラーが発生しました: ", e);
+                alert("魔王の言葉が届きませんでした。");
+            }
+        }
+    };
+</script>
+
+</body>
+</html>
